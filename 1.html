@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI学习系统 V14.3（章节彻底修复版）</title>
+
+<style>
+body{
+  font-family:-apple-system;
+  background:#f4f6f8;
+  margin:0;
+  padding:14px;
+  color:#222;
+}
+
+.container{max-width:980px;margin:auto;}
+
+.card{
+  background:#fff;
+  padding:14px;
+  margin-bottom:12px;
+  border-radius:14px;
+  box-shadow:0 1px 6px rgba(0,0,0,0.04);
+  border:1px solid #f0f0f0;
+}
+
+input,textarea,select{
+  width:100%;
+  padding:9px;
+  margin-top:6px;
+  border-radius:10px;
+  border:1px solid #e5e5e5;
+  font-size:14px;
+}
+
+button{
+  width:100%;
+  padding:10px;
+  margin-top:8px;
+  border:none;
+  border-radius:10px;
+  background:#e9ecef;
+  color:#333;
+}
+
+.smallBtn{
+  width:auto;
+  padding:5px 10px;
+  font-size:12px;
+  margin:2px;
+  border-radius:8px;
+  background:#f1f3f5;
+}
+
+.row{display:flex;gap:8px;margin-top:6px;}
+.col{flex:1;}
+
+.hidden{display:none;}
+.item{border-bottom:1px solid #eee;padding:8px 0;}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>🎓 AI学习系统 V14.3（章节彻底修复版）</h2>
+
+<!-- 章节 -->
+<div class="card">
+<h3>📚 章节管理</h3>
+
+<input id="chapterInput" placeholder="新增章节">
+<button onclick="addChapter()">添加章节</button>
+
+<div id="chapterList"></div>
+</div>
+
+<!-- 新建题目 -->
+<div class="card">
+<h3>➕ 新建题目</h3>
+
+<select id="chapterSelect"></select>
+
+<input id="q" placeholder="题目">
+<textarea id="ansKey" placeholder="参考答案"></textarea>
+
+<button onclick="addKW()">+ 添加关键词</button>
+<div id="kwBox"></div>
+
+<button onclick="addQuestion()">保存题目</button>
+</div>
+
+<!-- 题库 -->
+<div class="card">
+<h3>📖 题库</h3>
+
+<select id="filterChapter" onchange="renderDB()"></select>
+
+<div id="dbBox" class="hidden"></div>
+<button class="smallBtn" onclick="toggleDB()">展开/隐藏题库</button>
+</div>
+
+<!-- 测试 -->
+<div class="card">
+<h3>🎲 测试</h3>
+
+<button onclick="draw()">抽题</button>
+
+<div id="testArea" class="hidden">
+<h3 id="qt"></h3>
+<textarea id="ans"></textarea>
+
+<button onclick="score()">评分（20分制）</button>
+
+<div id="result"></div>
+<div id="refAns"></div>
+</div>
+</div>
+
+<!-- 错题 -->
+<div class="card">
+<h3>❌ 错题</h3>
+
+<div id="wrongBox" class="hidden"></div>
+<button class="smallBtn" onclick="toggleWrong()">展开/隐藏错题</button>
+</div>
+
+</div>
+
+<script>
+
+/* ================= 数据 ================= */
+let db = JSON.parse(localStorage.getItem("db")||"[]");
+let wrong = JSON.parse(localStorage.getItem("wrong")||"[]");
+let kwList = [];
+let current = null;
+
+/* ================= 存储 ================= */
+function save(){
+  localStorage.setItem("db",JSON.stringify(db));
+  localStorage.setItem("wrong",JSON.stringify(wrong));
+}
+
+/* ================= UI ================= */
+function toggleDB(){dbBox.classList.toggle("hidden")}
+function toggleWrong(){wrongBox.classList.toggle("hidden")}
+
+/* ================= 章节（核心修复逻辑） ================= */
+function getChapters(){
+  return [...new Set(db.map(d=>d.chapter))];
+}
+
+/* ---------- 添加章节 ---------- */
+function addChapter(){
+  let v = chapterInput.value.trim();
+  if(!v) return;
+
+  db.push({
+    id: Date.now()+Math.random(),
+    chapter:v,
+    q:"",
+    answer:"",
+    keywords:[]
+  });
+
+  chapterInput.value="";
+  save();
+  renderAll();
+}
+
+/* ---------- 删除章节（✔ 真级联删除） ---------- */
+function deleteChapter(name){
+  db = db.filter(d=>d.chapter !== name);
+  save();
+  renderAll();
+}
+
+/* ---------- 编辑章节（✔ 真同步修改） ---------- */
+function editChapter(oldName){
+
+  let newName = prompt("修改章节名称", oldName);
+  if(!newName || newName === oldName) return;
+
+  db.forEach(d=>{
+    if(d.chapter === oldName){
+      d.chapter = newName;
+    }
+  });
+
+  save();
+  renderAll();
+}
+
+/* ---------- 渲染章节 ---------- */
+function renderChapters(){
+
+  let chapters = getChapters();
+
+  chapterSelect.innerHTML = chapters.map(c=>`<option>${c}</option>`).join("");
+  filterChapter.innerHTML = chapters.map(c=>`<option>${c}</option>`).join("");
+
+  chapterList.innerHTML = chapters.map(c=>`
+    <div class="item">
+      <b>${c}</b>
+
+      <button class="smallBtn" onclick="editChapter('${c}')">编辑</button>
+      <button class="smallBtn" onclick="deleteChapter('${c}')">删除</button>
+    </div>
+  `).join("");
+}
+
+/* ================= 关键词 ================= */
+function addKW(){
+  kwList.push(1);
+  renderKW();
+}
+
+function renderKW(){
+  kwBox.innerHTML = kwList.map((_,i)=>`
+    <div class="row">
+      <div class="col">
+        <input id="kw${i}" placeholder="关键词">
+      </div>
+      <div class="col">
+        <select id="ks${i}">
+          ${Array.from({length:21},(_,n)=>`<option>${n}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+  `).join("");
+}
+
+/* ================= 新建题目 ================= */
+function addQuestion(){
+
+  let chapter = chapterSelect.value;
+
+  let keywords = kwList.map((_,i)=>({
+    word:document.getElementById("kw"+i)?.value || "",
+    score:+document.getElementById("ks"+i)?.value || 0
+  }));
+
+  db.push({
+    id: Date.now()+Math.random(),
+    chapter,
+    q:q.value,
+    answer:ansKey.value,
+    keywords
+  });
+
+  q.value="";
+  ansKey.value="";
+  kwList=[];
+  kwBox.innerHTML="";
+
+  save();
+  renderDB();
+}
+
+/* ================= 题库 ================= */
+function renderDB(){
+
+  let list = db.filter(d=>d.chapter===filterChapter.value);
+
+  dbBox.innerHTML = list.map(d=>`
+    <div class="item">
+      <b>${d.q || "(空题目)"}</b><br>
+      章节：${d.chapter}
+
+      <button class="smallBtn" onclick="del('${d.id}')">删除</button>
+      <button class="smallBtn" onclick="redo('${d.id}')">测试</button>
+    </div>
+  `).join("");
+}
+
+/* ================= 删除题目 ================= */
+function del(id){
+  db = db.filter(d=>d.id != id);
+  save();
+  renderDB();
+}
+
+/* ================= 测试 ================= */
+function draw(){
+
+  let list = db.filter(d => d.q); // 只排除空题（章节不限制）
+
+  if(!list.length){
+    alert("无题目");
+    return;
+  }
+
+  current = list[Math.floor(Math.random()*list.length)];
+
+  testArea.classList.remove("hidden");
+  qt.innerText=current.q;
+  ans.value="";
+  result.innerHTML="";
+  refAns.innerHTML="";
+}
+/* ================= 评分 ================= */
+function score(){
+
+  if(!current) return;
+
+  let text = ans.value || "";
+  let score = 0;
+  let fb = [];
+
+  (current.keywords||[]).forEach(k=>{
+    if(text.includes(k.word)){
+      score += k.score;
+    }else{
+      fb.push("缺少："+k.word);
+    }
+  });
+
+  score = Math.min(20,score);
+
+  result.innerHTML=`
+  <div class="card">
+    <b>分数：${score}/20</b><br>
+    ${fb.join("<br>")}
+  </div>
+  `;
+
+  refAns.innerHTML=`
+  <div class="card">
+    <b>参考答案：</b><br>${current.answer}
+  </div>
+  `;
+
+  if(score<12){
+    wrong.push(current);
+    save();
+    renderWrong();
+  }
+}
+
+/* ================= 错题 ================= */
+function renderWrong(){
+
+  let map={};
+  wrong.forEach(w=>{
+    if(!w?.q) return;
+    map[w.q]=(map[w.q]||0)+1;
+  });
+
+  wrongBox.innerHTML = Object.keys(map).map(q=>`
+    <div class="item">
+      <b>${q}</b><br>
+      错误次数：${map[q]}
+    </div>
+  `).join("");
+}
+
+/* ================= redo ================= */
+function redo(id){
+  current = db.find(d=>d.id==id);
+  if(!current) return;
+
+  testArea.classList.remove("hidden");
+  qt.innerText=current.q;
+  ans.value="";
+  result.innerHTML="";
+  refAns.innerHTML="";
+}
+
+/* ================= 初始化 ================= */
+function renderAll(){
+  renderChapters();
+  renderKW();
+  renderDB();
+  renderWrong();
+}
+
+renderAll();
+
+</script>
+
+</body>
+</html>
